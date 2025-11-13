@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Monitor - Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #1a202c;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .button:hover {
+            background: #2563eb;
+        }
+
+        .button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .status-dot.connected {
+            background: #22c55e;
+        }
+
+        .progress-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .progress-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-left: 3px solid #3b82f6;
+            margin: 8px 0;
+            background: #f9fafb;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .progress-item.completed {
+            border-left-color: #22c55e;
+        }
+
+        .progress-item .icon {
+            font-size: 18px;
+        }
+
+        .progress-item .phase {
+            font-weight: 600;
+            color: #1a202c;
+        }
+
+        .progress-item .time {
+            margin-left: auto;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal h2 {
+            margin-bottom: 20px;
+            color: #1a202c;
+        }
+
+        .approval-details {
+            margin: 20px 0;
+        }
+
+        .approval-details p {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+
+        .approval-details strong {
+            color: #4b5563;
+        }
+
+        .preview-box {
+            background: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            margin-bottom: 16px;
+            resize: vertical;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .button.approve {
+            background: #22c55e;
+        }
+
+        .button.approve:hover {
+            background: #16a34a;
+        }
+
+        .button.reject {
+            background: #ef4444;
+        }
+
+        .button.reject:hover {
+            background: #dc2626;
+        }
+
+        .result-box {
+            background: #f0fdf4;
+            border: 2px solid #22c55e;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .error-box {
+            background: #fef2f2;
+            border: 2px solid #ef4444;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            padding: 4px 0;
+            color: #374151;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Document Intelligence Workflow Monitor</h1>
+
+        <div class="card">
+            <h2>Control Panel</h2>
+            <button id="startBtn" class="button">Start Workflow</button>
+            <button id="stopBtn" class="button" disabled style="background: #ef4444; margin-left: 12px;">Stop</button>
+            
+            <div class="status" id="status" style="margin-top: 16px;">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Disconnected</span>
+                <span id="sessionInfo" style="margin-left: auto; color: #64748b; font-size: 14px;"></span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Progress Timeline</h2>
+            <div class="progress-list" id="progressList">
+                <p style="color: #64748b;">No events yet. Start a workflow to see progress.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Event Log</h2>
+            <div id="logContainer" style="max-height: 300px; overflow-y: auto; background: #f9fafb; padding: 12px; border-radius: 8px; font-size: 13px;">
+                <div class="log-entry">Waiting for workflow to start...</div>
+            </div>
+        </div>
+
+        <div id="resultContainer"></div>
+    </div>
+
+    <!-- Approval Modal -->
+    <div class="modal-overlay" id="approvalModal">
+        <div class="modal">
+            <h2>⏸️ Human Review Required</h2>
+            <div class="approval-details" id="approvalDetails"></div>
+            <textarea id="approvalComment" rows="3" placeholder="Add comment (optional)"></textarea>
+            <div class="button-group">
+                <button class="button reject" onclick="submitApproval(false)">❌ Reject</button>
+                <button class="button approve" onclick="submitApproval(true)">✅ Approve</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let eventSource = null;
+        let currentSessionId = null;
+        let pendingApproval = null;
+
+        // DOM elements
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const sessionInfo = document.getElementById('sessionInfo');
+        const progressList = document.getElementById('progressList');
+        const logContainer = document.getElementById('logContainer');
+        const approvalModal = document.getElementById('approvalModal');
+        const approvalDetails = document.getElementById('approvalDetails');
+        const approvalComment = document.getElementById('approvalComment');
+        const resultContainer = document.getElementById('resultContainer');
+
+        // Log helper
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.style.color = type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : '#374151';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Add progress item
+        function addProgress(phase, status, icon) {
+            if (progressList.firstChild?.tagName === 'P') {
+                progressList.innerHTML = '';
+            }
+
+            const item = document.createElement('div');
+            item.className = `progress-item ${status === 'completed' ? 'completed' : ''}`;
+            item.innerHTML = `
+                <span class="icon">${icon}</span>
+                <span class="phase">${phase.toUpperCase()}</span>
+                <span class="status">${status}</span>
+                <span class="time">${new Date().toLocaleTimeString()}</span>
+            `;
+            progressList.appendChild(item);
+            progressList.scrollTop = progressList.scrollHeight;
+        }
+
+        // Start workflow
+        startBtn.addEventListener('click', async () => {
+            try {
+                startBtn.disabled = true;
+                log('Starting workflow...');
+
+                const response = await fetch(`${API_BASE}/api/workflow/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        document_uri: '/Users/parasharnagle/Documents/LLMsprojs/Doc_Intel/docIntel/docintel/1040 - Individual Tax Return - Example 3.pdf',
+                        document_title: '1040 Tax Return Example',
+                        page_count: 20
+                    })
+                });
+
+                const data = await response.json();
+                currentSessionId = data.session_id;
+                log(`Workflow started: ${currentSessionId}`, 'success');
+                
+                connectToEventStream(currentSessionId);
+            } catch (error) {
+                log(`Error starting workflow: ${error.message}`, 'error');
+                startBtn.disabled = false;
+            }
+        });
+
+        // Connect to SSE
+        function connectToEventStream(sessionId) {
+            log('Connecting to event stream...');
+            
+            eventSource = new EventSource(`${API_BASE}/api/workflow/${sessionId}/events`);
+            
+            eventSource.addEventListener('connected', (e) => {
+                const data = JSON.parse(e.data);
+                statusDot.classList.add('connected');
+                statusText.textContent = 'Connected';
+                sessionInfo.textContent = `Session: ${sessionId.substring(0, 8)}...`;
+                stopBtn.disabled = false;
+                log('Connected to workflow stream', 'success');
+            });
+
+            eventSource.addEventListener('workflow_started', (e) => {
+                log('Workflow execution started');
+            });
+
+            eventSource.addEventListener('progress', (e) => {
+                const data = JSON.parse(e.data);
+                const icon = data.status === 'running' ? '🔄' : '✅';
+                addProgress(data.phase, data.status, icon);
+                log(`Progress: ${data.phase} - ${data.status}`);
+            });
+
+            eventSource.addEventListener('executor_completed', (e) => {
+                const data = JSON.parse(e.data);
+                log(`✓ ${data.executor_id} completed`);
+            });
+
+            eventSource.addEventListener('approval_required', (e) => {
+                const data = JSON.parse(e.data);
+                pendingApproval = data;
+                showApprovalModal(data);
+                log('⏸️  Human approval required');
+            });
+
+            eventSource.addEventListener('hitl_status', (e) => {
+                const data = JSON.parse(e.data);
+                const icon = data.status === 'approved' ? '✅' : '❌';
+                log(`${icon} HITL: ${data.status}`);
+            });
+
+            eventSource.addEventListener('workflow_completed', (e) => {
+                const data = JSON.parse(e.data);
+                log('🎉 Workflow completed!', 'success');
+                showResult(data.result);
+                disconnect();
+            });
+
+            eventSource.addEventListener('error', (e) => {
+                if (e.data) {
+                    const data = JSON.parse(e.data);
+                    log(`Error: ${data.message}`, 'error');
+                    showError(data.message);
+                }
+                disconnect();
+            });
+
+            eventSource.onerror = () => {
+                log('Connection error', 'error');
+                disconnect();
+            };
+        }
+
+        // Show approval modal
+        function showApprovalModal(data) {
+            approvalDetails.innerHTML = `
+                <p><strong>Title:</strong> ${data.title}</p>
+                <p><strong>Message:</strong> ${data.message}</p>
+                <p><strong>Source:</strong> ${data.source_uri}</p>
+                <div>
+                    <strong>Preview:</strong>
+                    <div class="preview-box">${data.preview}</div>
+                </div>
+            `;
+            approvalModal.classList.add('active');
+        }
+
+        // Submit approval
+        async function submitApproval(approved) {
+            if (!pendingApproval) return;
+
+            try {
+                const comment = approvalComment.value.trim() || undefined;
+                
+                log(`Submitting ${approved ? 'approval' : 'rejection'}...`);
+
+                const response = await fetch(`${API_BASE}/api/workflow/approval`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        request_id: pendingApproval.request_id,
+                        approval_id: pendingApproval.approval_id,
+                        approved: approved,
+                        comment: comment
+                    })
+                });
+
+                if (response.ok) {
+                    log(`${approved ? '✅ Approved' : '❌ Rejected'}`, 'success');
+                    approvalModal.classList.remove('active');
+                    approvalComment.value = '';
+                    pendingApproval = null;
+                } else {
+                    log('Failed to submit approval', 'error');
+                }
+            } catch (error) {
+                log(`Error submitting approval: ${error.message}`, 'error');
+            }
+        }
+
+        // Show result
+        function showResult(result) {
+            resultContainer.innerHTML = `
+                <div class="card result-box">
+                    <h2>✅ Workflow Completed</h2>
+                    <pre style="white-space: pre-wrap; word-break: break-word; margin-top: 12px;">${result}</pre>
+                </div>
+            `;
+        }
+
+        // Show error
+        function showError(message) {
+            resultContainer.innerHTML = `
+                <div class="card error-box">
+                    <h2>❌ Error</h2>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // Disconnect
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            statusDot.classList.remove('connected');
+            statusText.textContent = 'Disconnected';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            log('Disconnected from workflow stream');
+        }
+
+        // Stop button
+        stopBtn.addEventListener('click', disconnect);
+    </script>
+</body>
+</html>
