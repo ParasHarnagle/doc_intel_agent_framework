@@ -3,7 +3,6 @@ from typing import List
 from workflow_small import workflow_small
 from agent_framework import (
     AgentExecutorRequest,
-    RequestInfoExecutor,
     AgentExecutorResponse,
     AgentRunResponse,
     AgentRunUpdateEvent,
