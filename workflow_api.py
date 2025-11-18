@@ -10,6 +10,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+import os
+print("🔧 Environment Configuration:")
+print(f"   AZURE_AI_PROJECT_ENDPOINT: {os.getenv('AZURE_AI_PROJECT_ENDPOINT')}")
+print(f"   AZURE_AI_MODEL_DEPLOYMENT_NAME: {os.getenv('AZURE_AI_MODEL_DEPLOYMENT_NAME')}")
+print(f"   EXTRACTOR_AGENT_ID: {os.getenv('EXTRACTOR_AGENT_ID')}")
+print(f"   COMPLIANCE_AGENT_ID: {os.getenv('COMPLIANCE_AGENT_ID')}")
+print()
 
 from workflow_small import workflow_small
 from doc_data_models import DocInput, ApprovalRequest, ApprovalResponse
@@ -231,10 +243,15 @@ async def stream_workflow_events(session_id: str):
                     break
         
         except Exception as e:
-            yield format_sse("error", {
+            import traceback
+            error_details = {
                 "message": str(e),
+                "type": type(e).__name__,
+                "traceback": traceback.format_exc(),
                 "timestamp": datetime.utcnow().isoformat()
-            })
+            }
+            print(f"❌ Workflow error: {error_details}")  # Log to console
+            yield format_sse("error", error_details)
     
     return StreamingResponse(
         event_generator(),
