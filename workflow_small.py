@@ -8,10 +8,7 @@ from tools.utils import _name_from_uri, _stable_id
 from doc_data_models import ApprovalResponse, DocInput, PromptOutput
 from agent_framework import (
     AgentExecutorRequest,
-    RequestInfoExecutor,
-    RequestResponse,
     AgentExecutorResponse,
-    RequestInfoMessage,
     WorkflowContext,
     WorkflowEvent,
     AgentRunUpdateEvent,
@@ -24,7 +21,8 @@ from agent_framework import (
     WorkflowViz,
     ToolMode,
     WorkflowBuilder,
-    handler
+    handler,
+    response_handler
 )
 #from agent_framework.functionexecutor import FunctionExecutor
 from agent_framework.azure import AzureOpenAIChatClient
@@ -41,16 +39,16 @@ from azure.storage.blob import BlobServiceClient
 
 APPROVAL_CONTEXT: Dict[str, Dict[str, Any]] = {}
 
-class HitlCoordinator(Executor):
-    """Coordinates HITL using the pattern from hitl.py - sends request then receives response"""
+class HitlApprovalExecutor(Executor):
+    """HITL Executor using new ctx.request_info() API with @response_handler"""
     
-    def __init__(self, id: str = "hitl_coordinator"):
+    def __init__(self, id: str = "hitl_approval"):
         super().__init__(id=id)
     
     @handler
-    async def prepare_request(self, prev: str, ctx: WorkflowContext[ApprovalRequest]):
-        """Prepare and send ApprovalRequest message to RequestInfoExecutor ONLY"""
-        print(f"🔧 prepare_request called with input type: {type(prev)}")
+    async def run(self, prev: str, ctx: WorkflowContext[str]) -> None:
+        """Main handler that requests approval"""
+        print(f"🔧 HITL approval node called with input type: {type(prev)}")
         rid = str(uuid.uuid4())
 
         # Parse input
@@ -70,10 +68,10 @@ class HitlCoordinator(Executor):
             "preview": preview,
         }
 
-        print(f"📨 Sending ApprovalRequest with approval_id: {rid}")
-        # Send ApprovalRequest - will be routed to RequestInfoExecutor based on message type
-        # Use target_id to ensure it only goes to the RequestInfoExecutor
-        await ctx.send_message(
+        print(f"📨 Requesting approval with approval_id: {rid}")
+        
+        # Use new ctx.request_info() API with response_type parameter
+        await ctx.request_info(
             ApprovalRequest(
                 approval_id=rid,
                 title="Manual approval required",
@@ -81,22 +79,22 @@ class HitlCoordinator(Executor):
                 source_uri=uri,
                 preview=preview,
             ),
-            target_id="human_review_exec"  # Send only to RequestInfoExecutor
+            response_type=ApprovalResponse
         )
     
-    @handler
-    async def handle_response(
+    @response_handler
+    async def handle_approval_response(
         self,
-        feedback: RequestResponse[ApprovalRequest, ApprovalResponse],
-        ctx: WorkflowContext[str],
-    ):
-        """Handle approval response - receives RequestResponse wrapper from RequestInfoExecutor"""
-        response = feedback.data
+        request: ApprovalRequest,
+        response: ApprovalResponse,
+        ctx: WorkflowContext[str]
+    ) -> None:
+        """Response handler called automatically when approval is submitted"""
+        print(f"🔍 Response handler called - approval_id: {response.approval_id}, approved: {response.approved}")
         
+        # Retrieve cached data
         info = APPROVAL_CONTEXT.pop(response.approval_id, {})
         payload = info.get("payload")
-        
-        print(f"🔍 handle_response called with approval_id: {response.approval_id}, approved: {response.approved}")
         
         await ctx.add_event(WorkflowEvent({
             "type": "hitl",
@@ -106,11 +104,9 @@ class HitlCoordinator(Executor):
 
         if response.approved and payload:
             print(f"✅ Approved: {info.get('source_uri')}")
-            # Send the payload to the next executor in chain (final_res)
             await ctx.send_message(payload)
         else:
             print(f"❌ Rejected: {info.get('source_uri')}")
-            # Send rejection message to final_res
             await ctx.send_message(json.dumps({
                 "overall_status": "rejected_by_human",
                 "remarks": response.comment or "Rejected"
@@ -253,9 +249,8 @@ async def workflow_small(document_uri: str):
     compliance = FunctionExecutor(compliance_node, id="compliance_node")
     compliance_result_node = FunctionExecutor(compliance_result, id="compliance_result_node")
     
-    # HITL setup
-    hitl_coordinator = HitlCoordinator(id="hitl_coordinator")
-    hitl_gate = RequestInfoExecutor(id="human_review_exec")
+    # HITL setup using new pattern with @response_handler
+    hitl_node = HitlApprovalExecutor(id="hitl_approval")
     final_res = FunctionExecutor(final_result_placeholder, id="final_result_placeholder")
 
     # Build workflow: input → extractor → extractor_result → compliance → compliance_result → HITL → final
@@ -269,11 +264,9 @@ async def workflow_small(document_uri: str):
     builder.add_edge(extractor_result_node, compliance)
     builder.add_edge(compliance, compliance_result_node)
     
-    # HITL chain: compliance_result → coordinator → gate → coordinator (loop) → final
-    builder.add_edge(compliance_result_node, hitl_coordinator)
-    builder.add_edge(hitl_coordinator, hitl_gate)
-    builder.add_edge(hitl_gate, hitl_coordinator)  # Response goes back to coordinator
-    builder.add_edge(hitl_coordinator, final_res)  # After handling response, go to final    #builder.set_start_executor(extractor_chain[0])
+    # HITL chain: compliance_result → hitl_node → final
+    builder.add_edge(compliance_result_node, hitl_node)
+    builder.add_edge(hitl_node, final_res)
 
     wf = builder.build()
 
